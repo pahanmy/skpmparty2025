@@ -111,20 +111,29 @@
         function setupFormListeners() {
             const statusSelect = document.getElementById('status');
             const hadirOptions = document.getElementById('hadirOptions');
+            const sebabTidakHadirDiv = document.getElementById('sebabTidakHadirDiv'); // Tambah
             const anakCheckbox = document.getElementById('anak');
             const bilanganAnakDiv = document.getElementById('bilanganAnakDiv');
             const rsvpForm = document.getElementById('rsvpForm');
             const submitButton = rsvpForm.querySelector('button[type="submit"]');
 
-            // Tunjukkan/sembunyikan pilihan jika hadir
+            // Tunjukkan/sembunyikan pilihan jika hadir atau tidak hadir
             statusSelect.addEventListener('change', () => {
-                if (statusSelect.value === 'Hadir') {
+                const status = statusSelect.value;
+                
+                if (status === 'Hadir') {
                     hadirOptions.classList.remove('hidden');
-                } else {
+                    sebabTidakHadirDiv.classList.add('hidden'); // Sembunyi sebab
+                } else if (status === 'Tidak Hadir') {
                     hadirOptions.classList.add('hidden');
+                    sebabTidakHadirDiv.classList.remove('hidden'); // Tunjuk sebab
                     // Juga sembunyikan bilangan anak jika "Tidak Hadir" dipilih
                     bilanganAnakDiv.classList.add('hidden');
                     anakCheckbox.checked = false;
+                } else {
+                    // Sembunyikan kedua-duanya jika tiada pilihan
+                    hadirOptions.classList.add('hidden');
+                    sebabTidakHadirDiv.classList.add('hidden');
                 }
             });
 
@@ -148,6 +157,7 @@
                     let pasangan = false;
                     let anak = false;
                     let bilanganAnak = 0;
+                    let sebabTidakHadir = ""; // Tambah
 
                     if (status === 'Hadir') {
                         pasangan = document.getElementById('pasangan').checked;
@@ -155,15 +165,18 @@
                         if (anak) {
                             bilanganAnak = parseInt(document.getElementById('bilanganAnak').value) || 0;
                         }
+                    } else if (status === 'Tidak Hadir') {
+                        sebabTidakHadir = document.getElementById('sebabTidakHadir').value; // Ambil sebab
                     }
 
                     const rsvpData = {
-                        nama: document.getElementById('nama').value,
+                        nama: document.getElementById('nama').value.toUpperCase(), // Simpan sbg UPPERCASE
                         kategori: document.getElementById('kategori').value,
                         status: status,
                         pasangan: pasangan,
                         anak: anak,
                         bilanganAnak: bilanganAnak,
+                        sebabTidakHadir: sebabTidakHadir, // Simpan sebab
                         timestamp: new Date() // Simpan cap masa untuk penyusunan
                     };
 
@@ -175,6 +188,7 @@
                     // Sembunyikan semula medan bersyarat selepas reset
                     hadirOptions.classList.add('hidden');
                     bilanganAnakDiv.classList.add('hidden');
+                    sebabTidakHadirDiv.classList.add('hidden'); // Sembunyi sebab
 
                 } catch (error) {
                     console.error("Ralat menyimpan data:", error);
@@ -196,8 +210,8 @@
                     allResponses.push(doc.data());
                 });
 
-                // Susun mengikut nama
-                allResponses.sort((a, b) => a.nama.localeCompare(b.nama));
+                // Susun mengikut nama (lebih selamat)
+                allResponses.sort((a, b) => (a.nama || '').localeCompare(b.nama || ''));
 
                 renderAttendeeList(allResponses);
 
@@ -271,7 +285,7 @@
                             ${hadirList.map((item, index) => `
                                 <tr class="hover:bg-gray-750">
                                     <td class="p-3">${index + 1}</td>
-                                    <td class="p-3 font-medium">${item.nama}</td>
+                                    <td class="p-3 font-medium">${item.nama ? item.nama.toUpperCase() : ''}</td>
                                     <td class="p-3">${item.kategori}</td>
                                     <td class="p-3">${item.pasangan ? 'Ya' : 'Tidak'}</td>
                                     <td class="p-3">${item.bilanganAnak}</td>
@@ -297,7 +311,7 @@
                             ${tidakHadirList.map((item, index) => `
                                 <tr class="hover:bg-gray-750">
                                     <td class="p-3">${index + 1}</td>
-                                    <td class="p-3 font-medium">${item.nama}</td>
+                                    <td class="p-3 font-medium">${item.nama ? item.nama.toUpperCase() : ''}</td>
                                     <td class="p-3">${item.kategori}</td>
                                 </tr>
                             `).join('')}
@@ -404,7 +418,8 @@
                         <label for="nama" class="block text-sm font-medium text-gray-300 mb-1">Nama Penuh</label>
                         <input type="text" id="nama" name="nama" required
                                class="w-full p-3 bg-gray-700 border-gray-600 rounded-md text-white focus:ring-yellow-500 focus:border-yellow-500"
-                               placeholder="Cth: Ahmad bin Abu">
+                               placeholder="Cth: Ahmad bin Abu"
+                               oninput="this.value = this.value.toUpperCase()"> <!-- Tukar ke UPPERCASE semasa menaip -->
                     </div>
 
                     <!-- Kategori -->
@@ -430,6 +445,14 @@
                             <option value="Hadir">Hadir</option>
                             <option value="Tidak Hadir">Tidak Hadir</option>
                         </select>
+                    </div>
+
+                    <!-- Sebab Tidak Hadir (Sembunyi secara lalai) -->
+                    <div id="sebabTidakHadirDiv" class="hidden">
+                        <label for="sebabTidakHadir" class="block text-sm font-medium text-gray-300 mb-1">Sebab Tidak Hadir (Pilihan)</label>
+                        <textarea id="sebabTidakHadir" name="sebabTidakHadir" rows="3"
+                                  class="w-full p-3 bg-gray-700 border-gray-600 rounded-md text-white focus:ring-yellow-500 focus:border-yellow-500"
+                                  placeholder="Cth: Berada di luar kawasan"></textarea>
                     </div>
 
                     <!-- Pilihan Jika Hadir (Sembunyi secara lalai) -->
@@ -459,7 +482,7 @@
 
                     <!-- Butang Hantar -->
                     <div>
-                        <button type="submit"
+                        <button type-"submit"
                                 class="w-full p-3 bg-yellow-500 text-gray-900 font-bold rounded-lg shadow-md hover:bg-yellow-400 transition duration-200
                                        disabled:bg-gray-500 disabled:cursor-not-allowed">
                             Hantar Maklum Balas
@@ -488,5 +511,4 @@
 
 </body>
 </html>
-
 
