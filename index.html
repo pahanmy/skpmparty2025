@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="ms">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RSVP Majlis SK Pulau Melayu 2025</title>
+    <!-- Muat naik Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Font Awesome CDN for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <!-- Import Firebase SDK -->
+    <script type="module">
+        // Import fungsi yang diperlukan dari Firebase SDK
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getFirestore, collection, addDoc, query, onSnapshot, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+
+        // --- Konfigurasi Firebase (Projek "stemhub-ef028") ---
+        const firebaseConfig = {
+          apiKey: "AIzaSyB1-LviGV6HLYehXwXnlaELwOkujMadfuk",
+          authDomain: "stemhub-ef028.firebaseapp.com",
+          projectId: "stemhub-ef028",
+          storageBucket: "stemhub-ef028.firebasestorage.app", // Menggunakan config anda
+          messagingSenderId: "1059097892173",
+          appId: "1:1059097892173:web:d560576796512a841a9304"
+        };
+        // --------------------------------------------------------
+
+        let db, auth, rsvpCollectionRef;
+
+        // Fungsi untuk memulakan aplikasi
+        async function initApp() {
+            try {
+                // Sediakan Firebase
+                const app = initializeApp(firebaseConfig);
+                db = getFirestore(app);
+                auth = getAuth(app);
+                setLogLevel('Debug'); // Aktifkan log untuk penyahpepijatan
+
+                // Tentukan laluan koleksi Firestore untuk data awam
+                // Ini membolehkan semua orang melihat senarai RSVP yang sama
+                const rsvpPath = `rsvp-2025`; // Laluan koleksi di root
+                rsvpCollectionRef = collection(db, rsvpPath);
+
+                // Log masuk pengguna
+                await authUser();
+
+                // Pantau status pengesahan
+                onAuthStateChanged(auth, (user) => {
+                    if (user) {
+                        console.log("Pengguna disahkan:", user.uid);
+                        // Mula memuatkan data RSVP sebaik sahaja disahkan
+                        loadRSVPData();
+                    } else {
+                        console.log("Pengguna tidak disahkan.");
+                    }
+                });
+
+                // Mulakan fungsi lain
+                startCountdown();
+                setupFormListeners();
+
+            } catch (error) {
+                console.error("Ralat memulakan Firebase:", error);
+                displayMessage("Gagal memuatkan aplikasi. Sila muat semula.", "error", "formMessage");
+            }
+        }
+
+        // Fungsi untuk mengesahkan pengguna
+        async function authUser() {
+            try {
+                // Sentiasa log masuk secara anonim untuk membenarkan 'write'
+                await signInAnonymously(auth);
+            } catch (error) {
+                console.error("Ralat pengesahan:", error);
+            }
+        }
+
+        // Fungsi untuk memulakan kiraan detik
+        function startCountdown() {
+            const countdownElement = document.getElementById('countdown');
+            const eventDate = new Date('2025-11-15T18:30:00').getTime();
+
+            const interval = setInterval(() => {
+                const now = new Date().getTime();
+                const distance = eventDate - now;
+
+                if (distance < 0) {
+                    clearInterval(interval);
+                    countdownElement.innerHTML = "Majlis telah bermula!";
+                    return;
+                }
+
+                const days = Math.floor(distance / (1000 * 60 * 60 * 24));
+                const hours = Math.floor((distance % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+                const minutes = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
+                const seconds = Math.floor((distance % (1000 * 60)) / 1000);
+
+                countdownElement.innerHTML = `
+                    <div class="flex justify-center space-x-2 sm:space-x-4">
+                        <div class="text-center"><div class="text-2xl sm:text-4xl font-bold">${days}</div><div class="text-xs sm:text-sm">Hari</div></div>
+                        <div class="text-center"><div class="text-2xl sm:text-4xl font-bold">${hours}</div><div class="text-xs sm:text-sm">Jam</div></div>
+                        <div class="text-center"><div class="text-2xl sm:text-4xl font-bold">${minutes}</div><div class="text-xs sm:text-sm">Minit</div></div>
+                        <div class="text-center"><div class="text-2xl sm:text-4xl font-bold">${seconds}</div><div class="text-xs sm:text-sm">Saat</div></div>
+                    </div>
+                `;
+            }, 1000);
+        }
+
+        // Fungsi untuk menyediakan pendengar borang
+        function setupFormListeners() {
+            const statusSelect = document.getElementById('status');
+            const hadirOptions = document.getElementById('hadirOptions');
+            const anakCheckbox = document.getElementById('anak');
+            const bilanganAnakDiv = document.getElementById('bilanganAnakDiv');
+            const rsvpForm = document.getElementById('rsvpForm');
+            const submitButton = rsvpForm.querySelector('button[type="submit"]');
+
+            // Tunjukkan/sembunyikan pilihan jika hadir
+            statusSelect.addEventListener('change', () => {
+                if (statusSelect.value === 'Hadir') {
+                    hadirOptions.classList.remove('hidden');
+                } else {
+                    hadirOptions.classList.add('hidden');
+                    // Juga sembunyikan bilangan anak jika "Tidak Hadir" dipilih
+                    bilanganAnakDiv.classList.add('hidden');
+                    anakCheckbox.checked = false;
+                }
+            });
+
+            // Tunjukkan/sembunyikan input bilangan anak
+            anakCheckbox.addEventListener('change', () => {
+                if (anakCheckbox.checked) {
+                    bilanganAnakDiv.classList.remove('hidden');
+                } else {
+                    bilanganAnakDiv.classList.add('hidden');
+                }
+            });
+
+            // Kendalikan penghantaran borang
+            rsvpForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                submitButton.disabled = true;
+                submitButton.textContent = "Menghantar...";
+
+                try {
+                    const status = document.getElementById('status').value;
+                    let pasangan = false;
+                    let anak = false;
+                    let bilanganAnak = 0;
+
+                    if (status === 'Hadir') {
+                        pasangan = document.getElementById('pasangan').checked;
+                        anak = document.getElementById('anak').checked;
+                        if (anak) {
+                            bilanganAnak = parseInt(document.getElementById('bilanganAnak').value) || 0;
+                        }
+                    }
+
+                    const rsvpData = {
+                        nama: document.getElementById('nama').value,
+                        kategori: document.getElementById('kategori').value,
+                        status: status,
+                        pasangan: pasangan,
+                        anak: anak,
+                        bilanganAnak: bilanganAnak,
+                        timestamp: new Date() // Simpan cap masa untuk penyusunan
+                    };
+
+                    // Simpan data ke Firestore
+                    await addDoc(rsvpCollectionRef, rsvpData);
+
+                    displayMessage("Terima kasih! Maklum balas anda telah disimpan.", "success", "formMessage");
+                    rsvpForm.reset();
+                    // Sembunyikan semula medan bersyarat selepas reset
+                    hadirOptions.classList.add('hidden');
+                    bilanganAnakDiv.classList.add('hidden');
+
+                } catch (error) {
+                    console.error("Ralat menyimpan data:", error);
+                    displayMessage("Gagal menyimpan. Sila cuba lagi.", "error", "formMessage");
+                } finally {
+                    submitButton.disabled = false;
+                    submitButton.textContent = "Hantar Maklum Balas";
+                }
+            });
+        }
+
+        // Fungsi untuk memuatkan dan memaparkan data RSVP (masa nyata)
+        function loadRSVPData() {
+            const q = query(rsvpCollectionRef);
+
+            onSnapshot(q, (snapshot) => {
+                const allResponses = [];
+                snapshot.forEach((doc) => {
+                    allResponses.push(doc.data());
+                });
+
+                // Susun mengikut nama
+                allResponses.sort((a, b) => a.nama.localeCompare(b.nama));
+
+                renderAttendeeList(allResponses);
+
+            }, (error) => {
+                console.error("Ralat memuatkan data RSVP: ", error);
+                document.getElementById('attendeeList').innerHTML = "<p class='text-red-400'>Gagal memuatkan senarai kehadiran.</p>";
+            });
+        }
+
+        // Fungsi untuk memaparkan senarai kehadiran
+        function renderAttendeeList(responses) {
+            const listElement = document.getElementById('attendeeList');
+            const summaryElement = document.getElementById('attendanceSummary');
+
+            const hadirList = responses.filter(r => r.status === 'Hadir');
+            const tidakHadirList = responses.filter(r => r.status === 'Tidak Hadir');
+
+            let totalHadir = 0;
+            let totalPasangan = 0;
+            let totalAnak = 0;
+
+            hadirList.forEach(item => {
+                totalHadir++; // Staf/PIBG
+                if (item.pasangan) totalPasangan++;
+                if (item.bilanganAnak > 0) totalAnak += item.bilanganAnak;
+            });
+
+            const totalKeseluruhan = totalHadir + totalPasangan + totalAnak;
+
+            // Papar Ringkasan
+            summaryElement.innerHTML = `
+                <div class="bg-gray-700 p-5 rounded-lg text-center flex flex-col items-center justify-center space-y-2">
+                    <i class="fas fa-user text-2xl text-yellow-400 mb-1"></i>
+                    <span class="block text-3xl font-bold">${totalHadir}</span>
+                    <span class="text-sm text-gray-300">Staf/PIBG/Lain-lain</span>
+                </div>
+                <div class="bg-gray-700 p-5 rounded-lg text-center flex flex-col items-center justify-center space-y-2">
+                    <i class="fas fa-users text-2xl text-blue-400 mb-1"></i>
+                    <span class="block text-3xl font-bold">${totalPasangan}</span>
+                    <span class="text-sm text-gray-300">Pasangan</span>
+                </div>
+                <div class="bg-gray-700 p-5 rounded-lg text-center flex flex-col items-center justify-center space-y-2">
+                    <i class="fas fa-child text-2xl text-green-400 mb-1"></i>
+                    <span class="block text-3xl font-bold">${totalAnak}</span>
+                    <span class="text-sm text-gray-300">Anak-anak</span>
+                </div>
+                <div class="bg-yellow-600 p-5 rounded-lg text-center text-gray-900 flex flex-col items-center justify-center space-y-2">
+                    <i class="fas fa-star text-2xl text-gray-900 mb-1"></i>
+                    <span class="block text-3xl font-bold">${totalKeseluruhan}</span>
+                    <span class="text-sm font-semibold">Jumlah Keseluruhan</span>
+                </div>
+            `;
+
+            // Papar Senarai
+            listElement.innerHTML = `
+                <!-- Senarai Hadir -->
+                <h3 class="text-xl font-semibold text-green-400 mb-3 mt-6">Senarai Hadir (${hadirList.length})</h3>
+                <div class="overflow-x-auto rounded-lg shadow">
+                    <table class="w-full text-left divide-y divide-gray-700">
+                        <thead class="bg-gray-700">
+                            <tr>
+                                <th class="p-3 text-sm font-semibold text-gray-300 uppercase">Bil.</th>
+                                <th class="p-3 text-sm font-semibold text-gray-300 uppercase">Nama</th>
+                                <th class="p-3 text-sm font-semibold text-gray-300 uppercase">Kategori</th>
+                                <th class="p-3 text-sm font-semibold text-gray-300 uppercase">Pasangan</th>
+                                <th class="p-3 text-sm font-semibold text-gray-300 uppercase">Bil. Anak</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-700">
+                            ${hadirList.length === 0 ? `<tr><td colspan="5" class="p-3 text-center text-gray-400">Tiada data</td></tr>` : ''}
+                            ${hadirList.map((item, index) => `
+                                <tr class="hover:bg-gray-750">
+                                    <td class="p-3">${index + 1}</td>
+                                    <td class="p-3 font-medium">${item.nama}</td>
+                                    <td class="p-3">${item.kategori}</td>
+                                    <td class="p-3">${item.pasangan ? 'Ya' : 'Tidak'}</td>
+                                    <td class="p-3">${item.bilanganAnak}</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Senarai Tidak Hadir -->
+                <h3 class="text-xl font-semibold text-red-400 mb-3 mt-8">Senarai Tidak Hadir (${tidakHadirList.length})</h3>
+                <div class="overflow-x-auto rounded-lg shadow">
+                    <table class="w-full text-left divide-y divide-gray-700">
+                        <thead class="bg-gray-700">
+                            <tr>
+                                <th class="p-3 text-sm font-semibold text-gray-300 uppercase">Bil.</th>
+                                <th class="p-3 text-sm font-semibold text-gray-300 uppercase">Nama</th>
+                                <th class="p-3 text-sm font-semibold text-gray-300 uppercase">Kategori</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-700">
+                            ${tidakHadirList.length === 0 ? `<tr><td colspan="3" class="p-3 text-center text-gray-400">Tiada data</td></tr>` : ''}
+                            ${tidakHadirList.map((item, index) => `
+                                <tr class="hover:bg-gray-750">
+                                    <td class="p-3">${index + 1}</td>
+                                    <td class="p-3 font-medium">${item.nama}</td>
+                                    <td class="p-3">${item.kategori}</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+        }
+
+        // Fungsi utiliti untuk memaparkan mesej
+        function displayMessage(message, type, elementId) {
+            const el = document.getElementById(elementId);
+            const color = type === 'success' ? 'text-green-400' : 'text-red-400';
+            el.className = `p-3 text-center rounded-md ${color} bg-gray-700`;
+            el.textContent = message;
+
+            // Padam mesej selepas 5 saat
+            setTimeout(() => {
+                el.textContent = '';
+                el.className = '';
+            }, 5000);
+        }
+
+        // Mulakan aplikasi apabila DOM dimuatkan
+        document.addEventListener('DOMContentLoaded', initApp);
+    </script>
+    <style>
+        /* Menggunakan fon Inter */
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #111827; /* bg-gray-900 */
+        }
+        /* Kelas untuk sembunyi */
+        .hidden {
+            display: none;
+        }
+        /* Latar belakang bergradien untuk header */
+        .header-gradient {
+            background-image: linear-gradient(to right, #a855f7, #fde047);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+    </style>
+</head>
+<body class="text-gray-100">
+
+    <div class="container mx-auto max-w-5xl p-4 sm:p-8">
+
+        <!-- Header Majlis -->
+        <header class="text-center mb-6 p-6 rounded-lg bg-gray-800 shadow-xl">
+            <h1 class="text-3xl sm:text-5xl font-extrabold header-gradient mb-3">
+                SK Pulau Melayu
+            </h1>
+            <h2 class="text-2xl sm:text-4xl font-bold text-gray-100">
+                THE YEAR-END WRAP PARTY 2025
+            </h2>
+            <p class="text-lg sm:text-xl text-yellow-300 mt-4 italic">
+                Malam Gemilang Penuh Keriangan & Tanda Penghargaan!
+            </p>
+            <div class="mt-4 text-lg text-gray-300 space-y-1">
+                <p><strong>Lokasi:</strong> IMPERIAL HOTEL, LEVEL 5</p>
+                <p><strong>Tarikh:</strong> 15 NOVEMBER 2025</p>
+                <p><strong>Masa:</strong> 6:30 PM - 10:30 PM</p>
+            </div>
+        </header>
+
+        <!-- Teks Jemputan -->
+        <section class="text-center bg-gray-800 p-6 rounded-lg mb-8 shadow-lg">
+            <p class="text-lg text-gray-200">
+                Dengan segala hormatnya, kami menjemput Tuan/Puan untuk bersama-sama memeriahkan majlis penutup tahun kita. Jom raikan segala usaha dan kejayaan sepanjang tahun 2025!
+            </p>
+            <p class="text-md text-gray-400 mt-2">
+                Sila sahkan kehadiran anda di bawah untuk membantu kami merancang majlis ini dengan lancar.
+            </p>
+        </section>
+
+        <!-- Kiraan Detik -->
+        <section id="countdown" class="text-2xl font-mono bg-gray-800 p-6 rounded-lg text-center mb-8 shadow-lg text-yellow-400">
+            <!-- Kandungan dijana oleh JavaScript -->
+            Memuatkan kiraan detik...
+        </section>
+
+        <!-- Bahagian Utama (Borang & Senarai) -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+
+            <!-- Bahagian Borang RSVP -->
+            <section class="bg-gray-800 p-6 sm:p-8 rounded-lg shadow-xl">
+                <h2 class="text-2xl font-bold mb-6 text-yellow-400">Sahkan Kehadiran Anda</h2>
+
+                <form id="rsvpForm" class="space-y-4">
+                    <!-- Nama -->
+                    <div>
+                        <label for="nama" class="block text-sm font-medium text-gray-300 mb-1">Nama Penuh</label>
+                        <input type="text" id="nama" name="nama" required
+                               class="w-full p-3 bg-gray-700 border-gray-600 rounded-md text-white focus:ring-yellow-500 focus:border-yellow-500"
+                               placeholder="Cth: Ahmad bin Abu">
+                    </div>
+
+                    <!-- Kategori -->
+                    <div>
+                        <label for="kategori" class="block text-sm font-medium text-gray-300 mb-1">Kategori</label>
+                        <select id="kategori" name="kategori" required
+                                class="w-full p-3 bg-gray-700 border-gray-600 rounded-md text-white focus:ring-yellow-500 focus:border-yellow-500">
+                            <option value="">Sila pilih...</option>
+                            <option value="Guru">Guru</option>
+                            <option value="AKP">AKP</option>
+                            <option value="PIBG">PIBG</option>
+                            <option value="Guru Pelatih">Guru Pelatih</option>
+                            <option value="Lain-lain">Lain-lain</option>
+                        </select>
+                    </div>
+
+                    <!-- Status Kehadiran -->
+                    <div>
+                        <label for="status" class="block text-sm font-medium text-gray-300 mb-1">Status Kehadiran</label>
+                        <select id="status" name="status" required
+                                class="w-full p-3 bg-gray-700 border-gray-600 rounded-md text-white focus:ring-yellow-500 focus:border-yellow-500">
+                            <option value="">Sila pilih...</option>
+                            <option value="Hadir">Hadir</option>
+                            <option value="Tidak Hadir">Tidak Hadir</option>
+                        </select>
+                    </div>
+
+                    <!-- Pilihan Jika Hadir (Sembunyi secara lalai) -->
+                    <div id="hadirOptions" class="hidden space-y-4 pt-4 border-t border-gray-700">
+                        <div class="flex items-center">
+                            <input id="pasangan" name="pasangan" type="checkbox"
+                                   class="h-5 w-5 rounded text-yellow-500 bg-gray-700 border-gray-600 focus:ring-yellow-600">
+                            <label for="pasangan" class="ml-3 block text-sm font-medium text-gray-200">Bawa Pasangan (Suami / Isteri)</label>
+                        </div>
+
+                        <div class="flex items-center">
+                            <input id="anak" name="anak" type="checkbox"
+                                   class="h-5 w-5 rounded text-yellow-500 bg-gray-700 border-gray-600 focus:ring-yellow-600">
+                            <label for="anak" class="ml-3 block text-sm font-medium text-gray-200">Bawa Anak (12 tahun ke bawah)</label>
+                        </div>
+
+                        <!-- Bilangan Anak (Sembunyi secara lalai) -->
+                        <div id="bilanganAnakDiv" class="hidden pl-8">
+                            <label for="bilanganAnak" class="block text-sm font-medium text-gray-300 mb-1">Bilangan Anak</label>
+                            <input type="number" id="bilanganAnak" name="bilanganAnak" min="0" value="0"
+                                   class="w-full p-3 bg-gray-700 border-gray-600 rounded-md text-white focus:ring-yellow-500 focus:border-yellow-500">
+                        </div>
+                    </div>
+
+                    <!-- Mesej Borang -->
+                    <div id="formMessage" class="mt-4"></div>
+
+                    <!-- Butang Hantar -->
+                    <div>
+                        <button type="submit"
+                                class="w-full p-3 bg-yellow-500 text-gray-900 font-bold rounded-lg shadow-md hover:bg-yellow-400 transition duration-200
+                                       disabled:bg-gray-500 disabled:cursor-not-allowed">
+                            Hantar Maklum Balas
+                        </button>
+                    </div>
+                </form>
+            </section>
+
+            <!-- Bahagian Senarai Kehadiran -->
+            <section class="bg-gray-800 p-6 sm:p-8 rounded-lg shadow-xl">
+                <h2 class="text-2xl font-bold mb-4 text-yellow-400">Ringkasan Kehadiran</h2>
+                <div id="attendanceSummary" class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                    <!-- Kandungan dijana oleh JavaScript -->
+                    <p class="text-center col-span-full text-gray-400">Memuatkan ringkasan...</p>
+                </div>
+
+                <h2 class="text-2xl font-bold mb-4 text-yellow-400 border-t border-gray-700 pt-6">Senarai Yang Telah Mengisi</h2>
+                <div id="attendeeList">
+                    <!-- Kandungan dijana oleh JavaScript -->
+                    <p class="text-center text-gray-400">Memuatkan senarai...</p>
+                </div>
+            </section>
+
+        </div>
+    </div>
+
+</body>
+</html>
+
+
+
+
