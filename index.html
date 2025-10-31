@@ -38,7 +38,6 @@
                 setLogLevel('Debug'); // Aktifkan log untuk penyahpepijatan
 
                 // Tentukan laluan koleksi Firestore untuk data awam
-                // Ini membolehkan semua orang melihat senarai RSVP yang sama
                 const rsvpPath = `rsvp-2025`; // Laluan koleksi di root
                 rsvpCollectionRef = collection(db, rsvpPath);
 
@@ -111,11 +110,17 @@
         function setupFormListeners() {
             const statusSelect = document.getElementById('status');
             const hadirOptions = document.getElementById('hadirOptions');
-            const sebabTidakHadirDiv = document.getElementById('sebabTidakHadirDiv'); // Tambah
+            const sebabTidakHadirDiv = document.getElementById('sebabTidakHadirDiv');
             const anakCheckbox = document.getElementById('anak');
             const bilanganAnakDiv = document.getElementById('bilanganAnakDiv');
             const rsvpForm = document.getElementById('rsvpForm');
             const submitButton = rsvpForm.querySelector('button[type="submit"]');
+
+            // Pendengar untuk Modal
+            const modalBackdrop = document.getElementById('modalBackdrop');
+            const modalSummary = document.getElementById('modalSummary');
+            const modalCancel = document.getElementById('modalCancel');
+            const modalConfirm = document.getElementById('modalConfirm');
 
             // Tunjukkan/sembunyikan pilihan jika hadir atau tidak hadir
             statusSelect.addEventListener('change', () => {
@@ -146,59 +151,106 @@
                 }
             });
 
-            // Kendalikan penghantaran borang
+            // --- PERUBAHAN DI SINI: Kendalikan penghantaran borang untuk tunjuk modal ---
             rsvpForm.addEventListener('submit', async (e) => {
-                e.preventDefault();
-                submitButton.disabled = true;
-                submitButton.textContent = "Menghantar...";
+                e.preventDefault(); // Hentikan penghantaran sebenar
+                
+                // 1. Baca data dari borang
+                const nama = document.getElementById('nama').value;
+                const kategori = document.getElementById('kategori').value;
+                const status = document.getElementById('status').value;
+                let pasangan = false;
+                let anak = false;
+                let bilanganAnak = 0;
+                let sebabTidakHadir = "";
+                let totalPax = 0;
+                let summaryHtml = "";
 
-                try {
-                    const status = document.getElementById('status').value;
-                    let pasangan = false;
-                    let anak = false;
-                    let bilanganAnak = 0;
-                    let sebabTidakHadir = ""; // Tambah
-
-                    if (status === 'Hadir') {
-                        pasangan = document.getElementById('pasangan').checked;
-                        anak = document.getElementById('anak').checked;
-                        if (anak) {
-                            bilanganAnak = parseInt(document.getElementById('bilanganAnak').value) || 0;
-                        }
-                    } else if (status === 'Tidak Hadir') {
-                        sebabTidakHadir = document.getElementById('sebabTidakHadir').value; // Ambil sebab
+                // 2. Bina ringkasan berdasarkan status
+                if (status === 'Hadir') {
+                    pasangan = document.getElementById('pasangan').checked;
+                    anak = document.getElementById('anak').checked;
+                    if (anak) {
+                        bilanganAnak = parseInt(document.getElementById('bilanganAnak').value) || 0;
                     }
-
-                    const rsvpData = {
-                        nama: document.getElementById('nama').value.toUpperCase(), // Simpan sbg UPPERCASE
-                        kategori: document.getElementById('kategori').value,
-                        status: status,
-                        pasangan: pasangan,
-                        anak: anak,
-                        bilanganAnak: bilanganAnak,
-                        sebabTidakHadir: sebabTidakHadir, // Simpan sebab
-                        timestamp: new Date() // Simpan cap masa untuk penyusunan
-                    };
-
-                    // Simpan data ke Firestore
-                    await addDoc(rsvpCollectionRef, rsvpData);
-
-                    displayMessage("Terima kasih! Maklum balas anda telah disimpan.", "success", "formMessage");
-                    rsvpForm.reset();
-                    // Sembunyikan semula medan bersyarat selepas reset
-                    hadirOptions.classList.add('hidden');
-                    bilanganAnakDiv.classList.add('hidden');
-                    sebabTidakHadirDiv.classList.add('hidden'); // Sembunyi sebab
-
-                } catch (error) {
-                    console.error("Ralat menyimpan data:", error);
-                    displayMessage("Gagal menyimpan. Sila cuba lagi.", "error", "formMessage");
-                } finally {
-                    submitButton.disabled = false;
-                    submitButton.textContent = "Hantar Maklum Balas";
+                    totalPax = 1 + (pasangan ? 1 : 0) + bilanganAnak; // 1 untuk diri sendiri
+                    
+                    summaryHtml = `
+                        <p class="flex justify-between"><strong>Nama:</strong> <span>${nama.toUpperCase()}</span></p>
+                        <p class="flex justify-between"><strong>Kategori:</strong> <span>${kategori}</span></p>
+                        <p class="flex justify-between"><strong>Status:</strong> <span class="font-bold text-green-400">Hadir</span></p>
+                        <hr class="border-gray-600 my-2">
+                        <p class="flex justify-between"><strong>Bawa Pasangan:</strong> <span>${pasangan ? 'Ya' : 'Tidak'}</span></p>
+                        <p class="flex justify-between"><strong>Bawa Anak:</strong> <span>${anak ? `Ya (${bilanganAnak} orang)` : 'Tidak'}</span></p>
+                        <hr class="border-gray-600 my-2">
+                        <p class="flex justify-between text-lg"><strong>Jumlah Keseluruhan:</strong> <span class="font-bold text-yellow-400">${totalPax} orang</span></p>
+                    `;
+                } else { // Tidak Hadir
+                    sebabTidakHadir = document.getElementById('sebabTidakHadir').value;
+                    summaryHtml = `
+                        <p class="flex justify-between"><strong>Nama:</strong> <span>${nama.toUpperCase()}</span></p>
+                        <p class="flex justify-between"><strong>Kategori:</strong> <span>${kategori}</span></p>
+                        <p class="flex justify-between"><strong>Status:</strong> <span class="font-bold text-red-400">Tidak Hadir</span></p>
+                        ${sebabTidakHadir ? `<p class="mt-2"><strong>Sebab:</strong> ${sebabTidakHadir}</p>` : ''}
+                    `;
                 }
+
+                // 3. Papar Modal
+                modalSummary.innerHTML = summaryHtml;
+                modalBackdrop.classList.remove('hidden');
+
+                // 4. Sediakan data untuk dihantar
+                const rsvpData = {
+                    nama: nama.toUpperCase(),
+                    kategori: kategori,
+                    status: status,
+                    pasangan: pasangan,
+                    anak: anak,
+                    bilanganAnak: bilanganAnak,
+                    sebabTidakHadir: sebabTidakHadir,
+                    timestamp: new Date()
+                };
+
+                // 5. Tambah listener pada butang Sahkan (guna .onclick untuk timpa listener lama)
+                modalConfirm.onclick = async () => {
+                    // Tunjukkan status 'loading'
+                    modalConfirm.disabled = true;
+                    modalConfirm.textContent = "Menghantar...";
+                    submitButton.disabled = true; // Lumpuhkan juga butang borang asal
+                    submitButton.textContent = "Menghantar...";
+
+                    try {
+                        // Simpan data ke Firestore
+                        await addDoc(rsvpCollectionRef, rsvpData);
+                        
+                        displayMessage("Terima kasih! Maklum balas anda telah disimpan.", "success", "formMessage");
+                        rsvpForm.reset();
+                        // Sembunyikan semula medan bersyarat selepas reset
+                        hadirOptions.classList.add('hidden');
+                        bilanganAnakDiv.classList.add('hidden');
+                        sebabTidakHadirDiv.classList.add('hidden');
+                        
+                    } catch (error) {
+                        console.error("Ralat menyimpan data:", error);
+                        displayMessage("Gagal menyimpan. Sila cuba lagi.", "error", "formMessage");
+                    } finally {
+                        // Reset butang & tutup modal
+                        modalConfirm.disabled = false;
+                        modalConfirm.textContent = "Sahkan & Hantar";
+                        submitButton.disabled = false;
+                        submitButton.textContent = "Hantar Maklum Balas";
+                        modalBackdrop.classList.add('hidden');
+                    }
+                };
+            });
+
+            // Listener untuk butang Batal (hanya perlu set sekali)
+            modalCancel.addEventListener('click', () => {
+                modalBackdrop.classList.add('hidden');
             });
         }
+        
+        // --- Akhir Perubahan Logik Borang ---
 
         // Fungsi untuk memuatkan dan memaparkan data RSVP (masa nyata)
         function loadRSVPData() {
@@ -429,6 +481,7 @@
                                 class="w-full p-3 bg-gray-700 border-gray-600 rounded-md text-white focus:ring-yellow-500 focus:border-yellow-500">
                             <option value="">Sila pilih...</option>
                             <option value="Guru">Guru</option>
+                            <option value="Guru KAFA">Guru KAFA</option> <!-- TAMBAH DI SINI -->
                             <option value="AKP">AKP</option>
                             <option value="PIBG">PIBG</option>
                             <option value="Guru Pelatih">Guru Pelatih</option>
@@ -466,12 +519,13 @@
                         <div class="flex items-center">
                             <input id="anak" name="anak" type="checkbox"
                                    class="h-5 w-5 rounded text-yellow-500 bg-gray-700 border-gray-600 focus:ring-yellow-600">
-                            <label for="anak" class="ml-3 block text-sm font-medium text-gray-200">Bawa Anak (12 tahun ke bawah)</label>
+                            <!-- PERUBAHAN DI SINI: Teks label diubah -->
+                            <label for="anak" class="ml-3 block text-sm font-medium text-gray-200">Bawa Anak</label>
                         </div>
 
                         <!-- Bilangan Anak (Sembunyi secara lalai) -->
                         <div id="bilanganAnakDiv" class="hidden pl-8">
-                            <label for="bilanganAnak" class="block text-sm font-medium text-gray-300 mb-1">Bilangan Anak</label>
+                            <label for="bilanganAnak" class="block text-sm font-medium text-gray-300 mb-1">Bilangan Anak</qlabel>
                             <input type="number" id="bilanganAnak" name="bilanganAnak" min="0" value="0"
                                    class="w-full p-3 bg-gray-700 border-gray-600 rounded-md text-white focus:ring-yellow-500 focus:border-yellow-500">
                         </div>
@@ -482,7 +536,7 @@
 
                     <!-- Butang Hantar -->
                     <div>
-                        <button type-"submit"
+                        <button type="submit"
                                 class="w-full p-3 bg-yellow-500 text-gray-900 font-bold rounded-lg shadow-md hover:bg-yellow-400 transition duration-200
                                        disabled:bg-gray-500 disabled:cursor-not-allowed">
                             Hantar Maklum Balas
@@ -506,6 +560,20 @@
                 </div>
             </section>
 
+        </div>
+    </div>
+
+    <!-- Modal Pengesahan (TAMBAHAN BARU) -->
+    <div id="modalBackdrop" class="hidden fixed inset-0 bg-black bg-opacity-70 z-40 flex items-center justify-center p-4">
+        <div id="confirmationModal" class="bg-gray-800 rounded-lg shadow-xl w-full max-w-md p-6 z-50 border border-gray-600">
+            <h3 class="text-2xl font-bold text-yellow-400 mb-4">Sahkan Maklum Balas Anda</h3>
+            <div id="modalSummary" class="text-gray-200 space-y-2 mb-6 text-sm">
+                <!-- Kandungan dijana oleh JavaScript -->
+            </div>
+            <div class="flex justify-end space-x-4">
+                <button id="modalCancel" type="button" class="px-5 py-2 bg-gray-600 rounded-md hover:bg-gray-500 transition duration-200">Batal</button>
+                <button id="modalConfirm" type="button" class="px-5 py-2 bg-yellow-500 text-gray-900 font-bold rounded-md hover:bg-yellow-400 transition duration-200 disabled:bg-gray-500">Sahkan & Hantar</button>
+            </div>
         </div>
     </div>
 
